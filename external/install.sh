@@ -1,12 +1,16 @@
 
+CC=gcc
+CXX=g++
+
 ##############################################
 ############  DO NOT MODIFY #################
 ##############################################
 
 INSTALL_PATH=$PWD/DIST
 ROOT_DIR=$PWD
-tar -zxvf GPI-2-1.3.1.tar.gz
-cd GPI-2-1.3.1
-./install.sh -p $INSTALL_PATH
+tar -jxvf GPI-2-git.tar.bz2
+cd GPI-2
+./autogen.sh
+CC=$CC CXX=$CXX ./configure --prefix=$INSTALL_PATH
 cd ..
-rm -rf GPI-2-1.3.1
+rm -rf GPI-2
