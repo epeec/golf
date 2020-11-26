@@ -34,6 +34,14 @@ target_include_directories(testcoll PUBLIC
                            external/collectives) 
 target_link_libraries(testcoll collectives GPI2)
 
+
+add_executable(fwrap run/fortran_wrap.cpp)
+target_include_directories(fwrap PUBLIC
+                           external/DIST/include
+                           external/collectives) 
+target_link_libraries(fwrap collectives GPI2)
+
+
 add_executable(broadcast run/benchmarkBroadcast.cpp)
 target_include_directories(broadcast PUBLIC
                            external/DIST/include
