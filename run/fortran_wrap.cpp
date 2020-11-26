@@ -1,14 +1,4 @@
-/*****************************************************************************
-                           benchmark.cpp  -  description
-                             -------------------
-    begin                : October 2019
-    copyright            : (C) 2019 by Martin Kuehn
-    email                : Martin.Kuehn@itwm.fraunhofer.de
-*****************************************************************************/
-
 #include "allreduceButterflyDoubleBuffer.h"
-#include "gaspiCheckReturn.hpp"
-
 #include <GASPI.h>
 #include <stdlib.h>
 #include <iostream>
@@ -16,6 +6,24 @@
 #include <cmath>
 #include <unistd.h>
 #include <sys/time.h>
+
+/**
+ * Default is double
+ **/
+typedef double dataType;
+const allreduce::dataType data = allreduce::DOUBLE;
+
+
+inline void gaspiCheckReturn(const gaspi_return_t err,
+                             const std::string prefix = "") {
+  if (err != GASPI_SUCCESS) {
+    gaspi_string_t raw;
+    gaspi_print_error(err, &raw);
+    std::string message = prefix + std::string(raw);
+    free(raw);
+    throw std::runtime_error(message);
+  }
+}
 
 template <class T>
 void fill(T a[],
@@ -64,23 +72,11 @@ void report(allreduceButterflyDoubleBuffer& r,
                    "gaspi barrier");
 }
 
-
-int main(int argc, char** argv) {
-
-  typedef double dataType;
-  const allreduce::dataType data = allreduce::DOUBLE;
-
-
-  if ((argc < 3) || (argc > 4)) {
-    std::cerr << argv[0] << ": Usage " << argv[0] << " <length bytes>"
-              << " <num iterations> [check]"
-              << std::endl;
-    return -1;
-  }
-
-  const long len = atol(argv[1]) / sizeof(dataType);
-  const long numIter = atol(argv[2]);
-  const bool checkResults = (argc==4)?true:false;
+int runner(
+  const long len,
+  const long numIter,
+  const bool checkResults
+) {
 
   const gaspi_segment_id_t segmentReduce = 1;
   const gaspi_segment_id_t segmentCommunicate = 2;
@@ -89,17 +85,6 @@ int main(int argc, char** argv) {
   const gaspi_notification_id_t firstNotificationReduce = 2;
   const gaspi_notification_id_t firstNotificationCommunicate = 5;
   queues queueStock(2);
-
-  // ADHOC fix for GASPI
-  gaspi_config_t default_conf;
-  gaspi_config_get (&default_conf);
-  default_conf.build_infrastructure = GASPI_TOPOLOGY_DYNAMIC;
-  gaspi_config_set(default_conf);
-
-  gaspiCheckReturn(gaspi_proc_init(GASPI_BLOCK), "gaspi proc init");
-
-//  gaspiCheckReturn(gaspi_group_commit(GASPI_GROUP_ALL, GASPI_BLOCK),
-//                   "gaspi group commit");
 
   gaspi_rank_t numRanks;
   gaspiCheckReturn(gaspi_proc_num(&numRanks), "get number of ranks");
@@ -213,8 +198,33 @@ int main(int argc, char** argv) {
               << numGigaBytes / seconds << " GiB/s." << std::endl;
   }
 
+  return 0;
+}
+
+
+int main(int argc, char** argv) {
+
+  if ((argc < 3) || (argc > 4)) {
+    std::cerr << argv[0] << ": Usage " << argv[0] << " <length bytes>"
+              << " <num iterations> [check]"
+              << std::endl;
+    return -1;
+  }
+
+  const long len = atol(argv[1]) / sizeof(dataType);
+  const long numIter = atol(argv[2]);
+  const bool checkResults = (argc==4)?true:false;
+
+  // ADHOC fix for GASPI bug
+  gaspi_config_t default_conf;
+  gaspi_config_get (&default_conf);
+  default_conf.build_infrastructure = GASPI_TOPOLOGY_DYNAMIC;
+  gaspi_config_set(default_conf);
+  gaspiCheckReturn(gaspi_proc_init(GASPI_BLOCK), "gaspi proc init");
+
+  auto retval = runner(len, numIter, checkResults);
+
   gaspiCheckReturn(gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK), "gaspi barrier");
   gaspiCheckReturn(gaspi_proc_term(GASPI_BLOCK), "gaspi proc term");
-
-  return 0;
+  return retval;
 }
