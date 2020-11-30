@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 
 # Project Details
-project(GASPI C CXX)
+project(GASPI)
+
+enable_language(Fortran C CXX)
 
 # Enable c++11 standard since we use Lambdas
 set(CMAKE_CXX_STANDARD 11)
@@ -35,7 +37,10 @@ target_include_directories(testcoll PUBLIC
 target_link_libraries(testcoll collectives GPI2)
 
 
-add_executable(fwrap run/fortran_wrap.cpp)
+add_executable(fwrap run/benchmark.f90
+                     run/fortran_gaspi.f90
+                     run/fortran_wrap.cpp)
+
 target_include_directories(fwrap PUBLIC
                            external/DIST/include
                            external/collectives) 
@@ -53,4 +58,3 @@ target_include_directories(simplering PUBLIC
                            external/DIST/include
                            external/collectives)
 target_link_libraries(simplering collectives GPI2)
-
