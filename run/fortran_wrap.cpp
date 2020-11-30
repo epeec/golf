@@ -8,9 +8,7 @@
 #include <sys/time.h>
 #include <memory>
 
-/**
- * Default is double
- **/
+
 typedef double dataType;
 const allreduce::dataType data = allreduce::DOUBLE;
 const gaspi_segment_id_t segmentReduce = 1;
@@ -20,6 +18,8 @@ const gaspi_offset_t offsetCommunicate = 32;
 const gaspi_notification_id_t firstNotificationReduce = 2;
 const gaspi_notification_id_t firstNotificationCommunicate = 5;
 queues queueStock(2);
+std::unique_ptr<allreduceButterflyDoubleBuffer> reduce_ptr;
+
 
 inline void gaspiCheckReturn(const gaspi_return_t err,
                              const std::string prefix = "") {
@@ -32,14 +32,15 @@ inline void gaspiCheckReturn(const gaspi_return_t err,
   }
 }
 
+
 template <class T>
 void fill(T a[],
          const T rank,
          const long n) {
-  for (long i=0; i < n; i++) {
+  for (long i=0; i < n; i++)
     a[i] = i + rank + 1;
-  }
 }
+
 
 template <class T>
 int check(const T a[],
@@ -60,6 +61,7 @@ int check(const T a[],
   return state;
 }
 
+
 void report(allreduceButterflyDoubleBuffer& r,
             const long rank,
             const long numRanks) {
@@ -79,9 +81,10 @@ void report(allreduceButterflyDoubleBuffer& r,
                    "gaspi barrier");
 }
 
-std::unique_ptr<allreduceButterflyDoubleBuffer>
-setup_double_buffers(const long len) {
 
+void
+setup_double_buffers(int *lenIn) {
+  auto len = *lenIn;
   gaspi_rank_t numRanks;
   gaspiCheckReturn(gaspi_proc_num(&numRanks), "get number of ranks");
   gaspi_rank_t rank;
@@ -98,6 +101,7 @@ setup_double_buffers(const long len) {
     GASPI_BLOCK,
     GASPI_MEM_UNINITIALIZED),
     "create segment");
+
   gaspiCheckReturn(gaspi_segment_create(
     segmentCommunicate,
     lengthCommunicationBuffer * sizeof(dataType) + offsetCommunicate,
@@ -108,19 +112,24 @@ setup_double_buffers(const long len) {
 
   const gaspi_notification_id_t numberNotifications
     = allreduceButterflyDoubleBuffer::getNumberOfNotifications(numRanks);
+
   allreduceButterfly::segmentBuffer bufferReduce0 =
     {segmentReduce, offsetReduce,
      firstNotificationReduce};
+
   const gaspi_notification_id_t firstNoteReduce1
     = firstNotificationReduce + numberNotifications;
+
   allreduceButterfly::segmentBuffer bufferReduce1 = {
     segmentReduce,
     offsetReduce + len * sizeof(dataType), firstNoteReduce1};
+
   allreduceButterfly::segmentBuffer bufferCommunication = {
     segmentCommunicate, offsetCommunicate,
     firstNotificationCommunicate};
 
-std::unique_ptr<allreduceButterflyDoubleBuffer> reduce_ptr
+reduce_ptr =
+std::unique_ptr<allreduceButterflyDoubleBuffer> 
 (
   new allreduceButterflyDoubleBuffer(
     len, data, allreduce::SUM,
@@ -136,27 +145,30 @@ std::unique_ptr<allreduceButterflyDoubleBuffer> reduce_ptr
   dataType* bptr = (dataType*)((char*)ptr + offsetReduce);
   memset(bptr, 0, 2 * len * sizeof(dataType));
 
-  return reduce_ptr;
+}
+
+void
+free_double_buffer() {
+  auto manual_ptr = reduce_ptr.release();
+  delete [] manual_ptr;
 }
 
 int clean_runner(
-  const long len,
-  const bool checkResults
+  int *lenIn,
+  int *checkBit
 ) {
-
+  auto len = *lenIn;
+  auto checkResults = (*checkBit == 0) ? false : true;
   gaspi_rank_t numRanks;
   gaspiCheckReturn(gaspi_proc_num(&numRanks), "get number of ranks");
   gaspi_rank_t rank;
   gaspiCheckReturn(gaspi_proc_rank(&rank), "get rank");
 
-  auto reduce_ptr = setup_double_buffers(len);  
   auto reduce = reduce_ptr.get();
-  //report(reduce, rank, numRanks);
 
-  if (rank == 0) {
+  if (rank == 0)
     std::cout << "rank 0 of " << numRanks << " has finished setup."
               << std::endl;
-  }
 
   gaspiCheckReturn(gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK), "gaspi barrier");
 
@@ -212,6 +224,23 @@ int clean_runner(
   return 0;
 }
 
+int gaspi_allreduce_sum_f(
+  double *my_buffer,
+  int *lenIn,
+  int *checkBit
+) {
+  auto len = *lenIn;
+  auto checkResults = (*checkBit == 0) ? false : true;
+  auto reduce = reduce_ptr.get();
+  dataType* buffer = NULL;
+  buffer = (dataType*) reduce->getActiveReducePointer();
+  std::copy(my_buffer, my_buffer + len, buffer);
+  reduce->signal();
+  while ( (*reduce)() );
+  gaspiCheckReturn(gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK), "gaspi barrier");
+  std::copy(buffer, buffer + len, my_buffer);
+  return 0;
+}
 
 int main(int argc, char** argv) {
 
@@ -222,8 +251,9 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  const long len = atol(argv[1]) / sizeof(dataType);
-  const bool checkResults = (argc==4)?true:false;
+  int len = atol(argv[1]) / sizeof(dataType);
+  int checkResults = (argc==4)?1:0;
+  std::vector<double> buffer(len, 1.0);
 
   // ADHOC fix for GASPI bug
   gaspi_config_t default_conf;
@@ -232,9 +262,14 @@ int main(int argc, char** argv) {
   gaspi_config_set(default_conf);
   gaspiCheckReturn(gaspi_proc_init(GASPI_BLOCK), "gaspi proc init");
 
-  auto retval = clean_runner(len, checkResults);
-
+  gaspi_rank_t numRanks, rank;
+  gaspiCheckReturn(gaspi_proc_num(&numRanks), "get number of ranks");
+  gaspiCheckReturn(gaspi_proc_rank(&rank), "get rank");
+  setup_double_buffers(&len);
+  auto retval = gaspi_allreduce_sum_f( buffer.data(), &len, &checkResults);
+  //  auto retval = clean_runner(&len, &checkResults);
   gaspiCheckReturn(gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK), "gaspi barrier");
+  std::cout << "Result = " << buffer[0] << "\n";
   gaspiCheckReturn(gaspi_proc_term(GASPI_BLOCK), "gaspi proc term");
   return retval;
 }
