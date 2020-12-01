@@ -10,19 +10,24 @@
 
 
 typedef double dataType;
-const allreduce::dataType data = allreduce::DOUBLE;
-const gaspi_segment_id_t segmentReduce = 1;
-const gaspi_segment_id_t segmentCommunicate = 2;
-const gaspi_offset_t offsetReduce = 64;
-const gaspi_offset_t offsetCommunicate = 32;
-const gaspi_notification_id_t firstNotificationReduce = 2;
-const gaspi_notification_id_t firstNotificationCommunicate = 5;
-queues queueStock(2);
-std::unique_ptr<allreduceButterflyDoubleBuffer> reduce_ptr;
+static const allreduce::dataType data = allreduce::DOUBLE;
+static const gaspi_segment_id_t segmentReduce = 1;
+static const gaspi_segment_id_t segmentCommunicate = 2;
+static const gaspi_offset_t offsetReduce = 64;
+static const gaspi_offset_t offsetCommunicate = 32;
+static const gaspi_notification_id_t firstNotificationReduce = 2;
+static const gaspi_notification_id_t firstNotificationCommunicate = 5;
+static queues queueStock(2);
+static std::unique_ptr<allreduceButterflyDoubleBuffer> reduce_ptr;
+static gaspi_config_t default_conf;
+
 
 extern "C" {
+  void init_gaspi_f();
   void setup_double_buffers_f(int *lenIn);
-  int gaspi_allreduce_sum_f(double *my_buffer, int *lenIn, int *checkBit);
+  void gaspi_allreduce_sum_f(double *my_buffer, int *lenIn, int *checkBit);
+  void close_gaspi_f();
+  void gaspi_barrier_f();
 }
 
 
@@ -133,15 +138,15 @@ setup_double_buffers_f(int *lenIn) {
     segmentCommunicate, offsetCommunicate,
     firstNotificationCommunicate};
 
-reduce_ptr =
-std::unique_ptr<allreduceButterflyDoubleBuffer> 
-(
-  new allreduceButterflyDoubleBuffer(
-    len, data, allreduce::SUM,
-    bufferReduce0, bufferReduce1, bufferCommunication,
-    queueStock
-  )
-);
+  reduce_ptr =
+  std::unique_ptr<allreduceButterflyDoubleBuffer>
+  (
+    new allreduceButterflyDoubleBuffer(
+      len, data, allreduce::SUM,
+      bufferReduce0, bufferReduce1, bufferCommunication,
+      queueStock
+    )
+  );
 
   gaspi_pointer_t ptr;
   gaspiCheckReturn(gaspi_segment_ptr(segmentReduce, &ptr),
@@ -229,11 +234,13 @@ int clean_runner(
   return 0;
 }
 
-int gaspi_allreduce_sum_f(
+void gaspi_allreduce_sum_f(
   double *my_buffer,
   int *lenIn,
   int *checkBit
 ) {
+  std::cout << "Start of AllReduce\n";  
+  gaspiCheckReturn(gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK), "gaspi barrier");
   auto len = *lenIn;
   auto checkResults = (*checkBit == 0) ? false : true;
   auto reduce = reduce_ptr.get();
@@ -244,37 +251,41 @@ int gaspi_allreduce_sum_f(
   while ( (*reduce)() );
   gaspiCheckReturn(gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK), "gaspi barrier");
   std::copy(buffer, buffer + len, my_buffer);
-  return 0;
+  std::cout << "End of AllReduce\n";
 }
+
+
+void init_gaspi_f() {
+  gaspi_config_get (&default_conf);
+  default_conf.build_infrastructure = GASPI_TOPOLOGY_DYNAMIC;
+  gaspi_config_set(default_conf);
+  gaspiCheckReturn(gaspi_proc_init(GASPI_BLOCK), "gaspi proc init");
+}
+
+
+void close_gaspi_f() {
+  gaspiCheckReturn(gaspi_proc_term(GASPI_BLOCK), "gaspi proc term");
+}
+
+void gaspi_barrier_f() {
+  gaspiCheckReturn(gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK), "gaspi barrier");
+}
+
 
 // int main(int argc, char** argv) {
 
-//   if ((argc < 3) || (argc > 4)) {
-//     std::cerr << argv[0] << ": Usage " << argv[0] << " <length bytes>"
-//               << " <num iterations> [check]"
-//               << std::endl;
-//     return -1;
-//   }
-
-//   int len = atol(argv[1]) / sizeof(dataType);
-//   int checkResults = (argc==4)?1:0;
+//   int len = 4;
+//   int checkResults = 1;
 //   std::vector<double> buffer(len, 1.0);
 
-//   // ADHOC fix for GASPI bug
-//   gaspi_config_t default_conf;
-//   gaspi_config_get (&default_conf);
-//   default_conf.build_infrastructure = GASPI_TOPOLOGY_DYNAMIC;
-//   gaspi_config_set(default_conf);
-//   gaspiCheckReturn(gaspi_proc_init(GASPI_BLOCK), "gaspi proc init");
-
-//   gaspi_rank_t numRanks, rank;
-//   gaspiCheckReturn(gaspi_proc_num(&numRanks), "get number of ranks");
-//   gaspiCheckReturn(gaspi_proc_rank(&rank), "get rank");
+//   init_gaspi_f();
 //   setup_double_buffers_f(&len);
-//   auto retval = gaspi_allreduce_sum_f( buffer.data(), &len, &checkResults);
-//   //  auto retval = clean_runner(&len, &checkResults);
-//   gaspiCheckReturn(gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK), "gaspi barrier");
-//   std::cout << "Result = " << buffer[0] << "\n";
-//   gaspiCheckReturn(gaspi_proc_term(GASPI_BLOCK), "gaspi proc term");
-//   return retval;
+//   gaspi_allreduce_sum_f( buffer.data(), &len, &checkResults);
+//   gaspi_barrier_f();
+//   std::cout << "Result = ";
+//   for(int i=0;i <len; ++i)
+//     std::cout << buffer[i] << "  ";
+//   std::cout << "\n";  
+//   close_gaspi_f();
+//   return 0;
 // }
