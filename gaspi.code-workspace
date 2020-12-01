@@ -6,7 +6,8 @@
 	],
 	"settings": {
 		"cmake.environment": {
-			"LDFLAGS" : "-pthread"
+			"MPI_HOME"  : "/home/mohanamuraly/bin/mpich/mpich-3.2.1-gcc",
+			"LDFLAGS"   : "-pthread"
 		}
 	}
 }

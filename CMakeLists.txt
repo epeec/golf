@@ -5,8 +5,12 @@ project(GASPI)
 
 enable_language(Fortran C CXX)
 
+FIND_PACKAGE(MPI REQUIRED)
+
 # Enable c++11 standard since we use Lambdas
 set(CMAKE_CXX_STANDARD 11)
+
+
 
 link_directories(external/DIST/lib64)
 
@@ -26,15 +30,17 @@ set(libSources
 add_library(collectives SHARED ${libSources})
 target_include_directories(collectives PUBLIC 
                            external/DIST/include
-                           external/collectives) 
-target_link_libraries(collectives GPI2)
+                           external/collectives
+                           ${MPI_INCLUDE_PATH}) 
+target_link_libraries(collectives GPI2 ${MPI_C_LIBRARIES})
 
 
 add_executable(testcoll run/benchmark.cpp)
 target_include_directories(testcoll PUBLIC
                            external/DIST/include
-                           external/collectives) 
-target_link_libraries(testcoll collectives GPI2)
+                           external/collectives
+                           ${MPI_INCLUDE_PATH}) 
+target_link_libraries(testcoll collectives GPI2 ${MPI_C_LIBRARIES})
 
 
 add_executable(fwrap run/benchmark.f90
@@ -43,18 +49,21 @@ add_executable(fwrap run/benchmark.f90
 
 target_include_directories(fwrap PUBLIC
                            external/DIST/include
-                           external/collectives) 
-target_link_libraries(fwrap collectives GPI2)
+                           external/collectives
+                           ${MPI_INCLUDE_PATH})
+target_link_libraries(fwrap collectives GPI2 ${MPI_Fortran_LIBRARIES})
 
 
 add_executable(broadcast run/benchmarkBroadcast.cpp)
 target_include_directories(broadcast PUBLIC
                            external/DIST/include
-                           external/collectives)
-target_link_libraries(broadcast collectives GPI2)
+                           external/collectives
+                           ${MPI_INCLUDE_PATH}) 
+target_link_libraries(broadcast collectives GPI2 ${MPI_C_LIBRARIES})
 
 add_executable(simplering run/simplering.cpp)
 target_include_directories(simplering PUBLIC
                            external/DIST/include
-                           external/collectives)
-target_link_libraries(simplering collectives GPI2)
+                           external/collectives
+                           ${MPI_INCLUDE_PATH}) 
+target_link_libraries(simplering collectives GPI2 ${MPI_C_LIBRARIES})
