@@ -6,4 +6,9 @@ gpi-collectives are automatically included while
 compiling the benchmark code.
 
 
+# Fortran bindings
 
+Fortran bindingd for AVBP is provided in sources. Users must
+compile agaist the `fortan_gaspi` module provided in `external`
+folder (file:`fortran_gaspi.f90`). Works on MPI+GASPI mode as 
+well. 
