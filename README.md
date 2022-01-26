@@ -11,4 +11,5 @@ compiling the benchmark code.
 Fortran bindingd for AVBP is provided in sources. Users must
 compile agaist the `fortan_gaspi` module provided in `external`
 folder (file:`fortran_gaspi.f90`). Works on MPI+GASPI mode as 
-well. 
+well. For details on usage of bindings use the `bechmark.f90`
+as an example.
